@@ -270,6 +270,7 @@ plot(showSetupStatePlot ? (longSetupActive ? 1 : 0) : na, title = "AAA L Setup A
 plot(showSetupStatePlot ? (shortSetupActive ? -1 : 0) : na, title = "AAA S Setup Active -1=ON", display = display.data_window)
 
 plotshape(showSetupMarks and bullZoneTouchOnce, title = "L Setup Start", style = shape.circle, location = location.belowbar, color = color.lime, size = size.tiny, text = "L-SET")
+
 plotshape(showSetupMarks and bearZoneTouchOnce, title = "S Setup Start", style = shape.circle, location = location.abovebar, color = color.aqua, size = size.tiny, text = "S-SET")
 alertcondition(useZoneTouchAlerts and bullZoneTouchOnce, title = "15m Long MTA Zone Touch", message = "1分足価格が15分押し安値MTAゾーンに接触しました")
 alertcondition(useZoneTouchAlerts and bearZoneTouchOnce, title = "15m Short MTA Zone Touch", message = "1分足価格が15分戻り高値MTAゾーンに接触しました")
