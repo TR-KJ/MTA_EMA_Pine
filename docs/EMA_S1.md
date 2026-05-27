@@ -607,3 +607,10 @@ docs/v8.1a-D-S1-EMA-Cross-Strategy.md
 ```text
 pine/v8.1a-D-S1-EMA-Cross-Strategy.pine
 ```
+
+##S1.1への変更点
+
+1. default_qty_value：100 → 2
+2. Entry条件に barstate.isconfirmed を明示
+3. Risk判定：> 0 → > syminfo.mintick
+4. strategy.exit に qty_percent = 100 を明示
