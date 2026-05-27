@@ -1,0 +1,332 @@
+//@version=6
+strategy("MTA v8.1α-D-S1-EMA Cross Strategy - 15m MTA on 1m", overlay = true, max_labels_count = 500, max_lines_count = 100, max_bars_back = 5000, initial_capital = 1000000, default_qty_type = strategy.percent_of_equity, default_qty_value = 100, commission_type = strategy.commission.percent, commission_value = 0.04, slippage = 2, pyramiding = 0, process_orders_on_close = false, calc_on_every_tick = false)
+
+htfTf = input.timeframe("15", "上位足MTA時間足")
+
+leftBars = input.int(6, "15分MTA 左ピボット本数", minval = 1)
+rightBars = input.int(6, "15分MTA 右ピボット本数", minval = 1)
+
+showHtfZones = input.bool(true, "15分MTAゾーンを表示")
+showHtfPairLines = input.bool(true, "15分MTA対応高値安値を表示")
+showTrendStatePlot = input.bool(false, "MTA状態をデータウィンドウに表示")
+
+useZoneTouchAlerts = input.bool(true, "MTAゾーン接触アラートを有効化")
+
+showEma = input.bool(true, "1分足EMAを表示")
+emaLen = input.int(20, "1分足EMA期間", minval = 1)
+
+useSetupState = input.bool(true, "MTA接触後Setup状態を有効化")
+setupExpireBars = input.int(30, "MTA Setup有効本数", minval = 1)
+showSetupMarks = input.bool(true, "MTA Setup開始マークを表示")
+showSetupStatePlot = input.bool(false, "MTA Setup状態をデータウィンドウに表示")
+
+useEmaTrigger = input.bool(true, "EMAクロスTriggerを有効化")
+showTriggerMarks = input.bool(true, "EMA Triggerマークを表示")
+useEmaTriggerAlerts = input.bool(true, "EMA Triggerアラートを有効化")
+
+rr = input.float(1.0, "RR", minval = 0.1, step = 0.1)
+
+bodyHighBreak(targetPrice, rb) =>
+    bool result = false
+    for i = 0 to rb - 1
+        bodyHigh = math.max(open[i], close[i])
+        if bodyHigh > targetPrice
+            result := true
+    result
+
+bodyLowBreak(targetPrice, rb) =>
+    bool result = false
+    for i = 0 to rb - 1
+        bodyLow = math.min(open[i], close[i])
+        if bodyLow < targetPrice
+            result := true
+    result
+
+mtaBodyHighMax(mtaBar) =>
+    float result = na
+    int barsBack = bar_index - mtaBar
+    int limit = math.min(barsBack, 500)
+    if limit >= 0
+        for i = 0 to limit
+            bodyHigh = math.max(open[i], close[i])
+            result := na(result) ? bodyHigh : math.max(result, bodyHigh)
+    result
+
+mtaBodyLowMin(mtaBar) =>
+    float result = na
+    int barsBack = bar_index - mtaBar
+    int limit = math.min(barsBack, 500)
+    if limit >= 0
+        for i = 0 to limit
+            bodyLow = math.min(open[i], close[i])
+            result := na(result) ? bodyLow : math.min(result, bodyLow)
+    result
+
+calcHtfMta() =>
+    pivotHigh = ta.pivothigh(high, leftBars, rightBars)
+    pivotLow = ta.pivotlow(low, leftBars, rightBars)
+
+    isPivotHigh = not na(pivotHigh)
+    isPivotLow = not na(pivotLow)
+
+    pivotBar = bar_index - rightBars
+
+    confirmedBodyHigh = math.max(open[1], close[1])
+    confirmedBodyLow = math.min(open[1], close[1])
+    confirmedHigh = high[1]
+    confirmedLow = low[1]
+
+    var int lastType = 0
+    var float lastPrice = na
+    var float prevHighPrice = na
+    var float prevLowPrice = na
+
+    var float lastHighWickPrice = na
+    var int lastHighBar = na
+
+    var float lastLowWickPrice = na
+    var int lastLowBar = na
+
+    var float currentHighRef = na
+    var float currentLowRef = na
+
+    var int trendState = 0
+
+    var float pushLowMtaPrice = na
+    var float returnHighMtaPrice = na
+
+    var float pushLowPairHighPrice = na
+    var float returnHighPairLowPrice = na
+
+    var float bullZoneTop = na
+    var float bullZoneBottom = na
+
+    var float bearZoneTop = na
+    var float bearZoneBottom = na
+
+    if trendState == 1 and not na(pushLowPairHighPrice) and confirmedBodyHigh > pushLowPairHighPrice and confirmedHigh > pushLowPairHighPrice
+        pushLowPairHighPrice := confirmedHigh
+        if not na(lastLowWickPrice)
+            pushLowMtaPrice := lastLowWickPrice
+            float zoneBodyLow = mtaBodyLowMin(lastLowBar)
+            bullZoneTop := zoneBodyLow
+            bullZoneBottom := lastLowWickPrice
+
+    if trendState == -1 and not na(returnHighPairLowPrice) and confirmedBodyLow < returnHighPairLowPrice and confirmedLow < returnHighPairLowPrice
+        returnHighPairLowPrice := confirmedLow
+        if not na(lastHighWickPrice)
+            returnHighMtaPrice := lastHighWickPrice
+            float zoneBodyHigh = mtaBodyHighMax(lastHighBar)
+            bearZoneTop := lastHighWickPrice
+            bearZoneBottom := zoneBodyHigh
+
+    if trendState == -1 and not na(returnHighMtaPrice) and close > returnHighMtaPrice
+        trendState := 1
+        returnHighMtaPrice := na
+        returnHighPairLowPrice := na
+        bearZoneTop := na
+        bearZoneBottom := na
+
+    if trendState == 1 and not na(pushLowMtaPrice) and close < pushLowMtaPrice
+        trendState := -1
+        pushLowMtaPrice := na
+        pushLowPairHighPrice := na
+        bullZoneTop := na
+        bullZoneBottom := na
+
+    if isPivotHigh
+        if lastType == 1
+            if pivotHigh > lastPrice
+                bool isHH = not na(currentHighRef) and bodyHighBreak(currentHighRef, rightBars)
+                lastPrice := pivotHigh
+                if isHH and trendState != -1 and na(pushLowMtaPrice) and not na(lastLowWickPrice)
+                    trendState := 1
+                    pushLowMtaPrice := lastLowWickPrice
+                    pushLowPairHighPrice := pivotHigh
+                    float zoneBodyLow = mtaBodyLowMin(lastLowBar)
+                    bullZoneTop := zoneBodyLow
+                    bullZoneBottom := lastLowWickPrice
+                prevHighPrice := pivotHigh
+                lastHighWickPrice := pivotHigh
+                lastHighBar := pivotBar
+        else
+            currentHighRef := prevHighPrice
+            bool isHH = not na(currentHighRef) and bodyHighBreak(currentHighRef, rightBars)
+            lastType := 1
+            lastPrice := pivotHigh
+            if isHH and trendState != -1 and na(pushLowMtaPrice) and not na(lastLowWickPrice)
+                trendState := 1
+                pushLowMtaPrice := lastLowWickPrice
+                pushLowPairHighPrice := pivotHigh
+                float zoneBodyLow = mtaBodyLowMin(lastLowBar)
+                bullZoneTop := zoneBodyLow
+                bullZoneBottom := lastLowWickPrice
+            prevHighPrice := pivotHigh
+            lastHighWickPrice := pivotHigh
+            lastHighBar := pivotBar
+
+    if isPivotLow
+        if lastType == -1
+            if pivotLow < lastPrice
+                bool isLL = not na(currentLowRef) and bodyLowBreak(currentLowRef, rightBars)
+                lastPrice := pivotLow
+                if isLL and trendState != 1 and na(returnHighMtaPrice) and not na(lastHighWickPrice)
+                    trendState := -1
+                    returnHighMtaPrice := lastHighWickPrice
+                    returnHighPairLowPrice := pivotLow
+                    float zoneBodyHigh = mtaBodyHighMax(lastHighBar)
+                    bearZoneTop := lastHighWickPrice
+                    bearZoneBottom := zoneBodyHigh
+                prevLowPrice := pivotLow
+                lastLowWickPrice := pivotLow
+                lastLowBar := pivotBar
+        else
+            currentLowRef := prevLowPrice
+            bool isLL = not na(currentLowRef) and bodyLowBreak(currentLowRef, rightBars)
+            lastType := -1
+            lastPrice := pivotLow
+            if isLL and trendState != 1 and na(returnHighMtaPrice) and not na(lastHighWickPrice)
+                trendState := -1
+                returnHighMtaPrice := lastHighWickPrice
+                returnHighPairLowPrice := pivotLow
+                float zoneBodyHigh = mtaBodyHighMax(lastHighBar)
+                bearZoneTop := lastHighWickPrice
+                bearZoneBottom := zoneBodyHigh
+            prevLowPrice := pivotLow
+            lastLowWickPrice := pivotLow
+            lastLowBar := pivotBar
+
+    [trendState, bullZoneTop, bullZoneBottom, bearZoneTop, bearZoneBottom, pushLowPairHighPrice, returnHighPairLowPrice]
+
+[htfTrendState, htfBullZoneTop, htfBullZoneBottom, htfBearZoneTop, htfBearZoneBottom, htfBullPairHigh, htfBearPairLow] = request.security(syminfo.tickerid, htfTf, calcHtfMta(), gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
+
+bullTopPlot = plot(showHtfZones and htfTrendState == 1 ? htfBullZoneTop : na, title = "15m 押し安値MTAゾーン上限", color = color.lime, linewidth = 1, style = plot.style_linebr)
+bullBottomPlot = plot(showHtfZones and htfTrendState == 1 ? htfBullZoneBottom : na, title = "15m 押し安値MTAゾーン下限", color = color.lime, linewidth = 1, style = plot.style_linebr)
+
+bearTopPlot = plot(showHtfZones and htfTrendState == -1 ? htfBearZoneTop : na, title = "15m 戻り高値MTAゾーン上限", color = color.aqua, linewidth = 1, style = plot.style_linebr)
+bearBottomPlot = plot(showHtfZones and htfTrendState == -1 ? htfBearZoneBottom : na, title = "15m 戻り高値MTAゾーン下限", color = color.aqua, linewidth = 1, style = plot.style_linebr)
+
+fill(bullTopPlot, bullBottomPlot, color = showHtfZones and htfTrendState == 1 ? color.new(color.lime, 85) : na)
+fill(bearTopPlot, bearBottomPlot, color = showHtfZones and htfTrendState == -1 ? color.new(color.aqua, 85) : na)
+
+plot(showHtfPairLines and htfTrendState == 1 ? htfBullPairHigh : na, title = "15m MTA対応高値", color = color.orange, linewidth = 2, style = plot.style_linebr)
+plot(showHtfPairLines and htfTrendState == -1 ? htfBearPairLow : na, title = "15m MTA対応安値", color = color.red, linewidth = 2, style = plot.style_linebr)
+
+plot(showTrendStatePlot ? htfTrendState : na, title = "15m MTA State", display = display.data_window)
+
+emaValue = ta.ema(close, emaLen)
+
+plot(showEma ? emaValue : na, title = "1m EMA", color = color.yellow, linewidth = 2)
+
+bullZoneTouch = htfTrendState == 1 and not na(htfBullZoneTop) and not na(htfBullZoneBottom) and low <= htfBullZoneTop and high >= htfBullZoneBottom
+bearZoneTouch = htfTrendState == -1 and not na(htfBearZoneTop) and not na(htfBearZoneBottom) and high >= htfBearZoneBottom and low <= htfBearZoneTop
+
+bullZoneTouchOnce = bullZoneTouch and not bullZoneTouch[1]
+bearZoneTouchOnce = bearZoneTouch and not bearZoneTouch[1]
+
+var bool longSetupActive = false
+var bool shortSetupActive = false
+var int longSetupStartBar = na
+var int shortSetupStartBar = na
+
+if useSetupState
+    if bullZoneTouchOnce
+        longSetupActive := true
+        shortSetupActive := false
+        longSetupStartBar := bar_index
+        shortSetupStartBar := na
+
+    if bearZoneTouchOnce
+        shortSetupActive := true
+        longSetupActive := false
+        shortSetupStartBar := bar_index
+        longSetupStartBar := na
+
+    if longSetupActive
+        if htfTrendState != 1
+            longSetupActive := false
+            longSetupStartBar := na
+
+    if shortSetupActive
+        if htfTrendState != -1
+            shortSetupActive := false
+            shortSetupStartBar := na
+
+    if longSetupActive
+        if not na(longSetupStartBar)
+            if bar_index - longSetupStartBar > setupExpireBars
+                longSetupActive := false
+                longSetupStartBar := na
+
+    if shortSetupActive
+        if not na(shortSetupStartBar)
+            if bar_index - shortSetupStartBar > setupExpireBars
+                shortSetupActive := false
+                shortSetupStartBar := na
+else
+    longSetupActive := false
+    shortSetupActive := false
+    longSetupStartBar := na
+    shortSetupStartBar := na
+
+closeCrossOverEma = ta.crossover(close, emaValue)
+closeCrossUnderEma = ta.crossunder(close, emaValue)
+
+longEmaTrigger = false
+shortEmaTrigger = false
+
+if useEmaTrigger
+    if longSetupActive
+        if closeCrossOverEma
+            longEmaTrigger := true
+
+    if shortSetupActive
+        if closeCrossUnderEma
+            shortEmaTrigger := true
+
+canEnterLong = longEmaTrigger and strategy.position_size == 0 and not na(htfBullZoneBottom)
+canEnterShort = shortEmaTrigger and strategy.position_size == 0 and not na(htfBearZoneTop)
+
+longStopPrice = htfBullZoneBottom
+shortStopPrice = htfBearZoneTop
+
+longRisk = close - longStopPrice
+shortRisk = shortStopPrice - close
+
+validLongRisk = longRisk > 0
+validShortRisk = shortRisk > 0
+
+longTakeProfitPrice = close + longRisk * rr
+shortTakeProfitPrice = close - shortRisk * rr
+
+if canEnterLong
+    if validLongRisk
+        strategy.entry("L", strategy.long)
+        strategy.exit("L-Exit", from_entry = "L", stop = longStopPrice, limit = longTakeProfitPrice)
+        longSetupActive := false
+        longSetupStartBar := na
+
+if canEnterShort
+    if validShortRisk
+        strategy.entry("S", strategy.short)
+        strategy.exit("S-Exit", from_entry = "S", stop = shortStopPrice, limit = shortTakeProfitPrice)
+        shortSetupActive := false
+        shortSetupStartBar := na
+
+setupState = longSetupActive ? 1 : shortSetupActive ? -1 : 0
+
+plot(showSetupStatePlot ? setupState : na, title = "AAA Setup State L=1 S=-1 Off=0", display = display.data_window)
+plot(showSetupStatePlot ? (longSetupActive ? 1 : 0) : na, title = "AAA L Setup Active 1=ON", display = display.data_window)
+plot(showSetupStatePlot ? (shortSetupActive ? -1 : 0) : na, title = "AAA S Setup Active -1=ON", display = display.data_window)
+
+plotshape(showSetupMarks and bullZoneTouchOnce, title = "L Setup Start", style = shape.circle, location = location.belowbar, color = color.lime, size = size.tiny, text = "L-SET")
+plotshape(showSetupMarks and bearZoneTouchOnce, title = "S Setup Start", style = shape.circle, location = location.abovebar, color = color.aqua, size = size.tiny, text = "S-SET")
+
+plotshape(showTriggerMarks and longEmaTrigger, title = "L EMA Trigger", style = shape.triangleup, location = location.belowbar, color = color.lime, size = size.small, text = "L-TRIG")
+plotshape(showTriggerMarks and shortEmaTrigger, title = "S EMA Trigger", style = shape.triangledown, location = location.abovebar, color = color.red, size = size.small, text = "S-TRIG")
+
+alertcondition(useZoneTouchAlerts and bullZoneTouchOnce, title = "15m Long MTA Zone Touch", message = "1分足価格が15分押し安値MTAゾーンに接触しました")
+alertcondition(useZoneTouchAlerts and bearZoneTouchOnce, title = "15m Short MTA Zone Touch", message = "1分足価格が15分戻り高値MTAゾーンに接触しました")
+
+alertcondition(useEmaTriggerAlerts and longEmaTrigger, title = "Long EMA Cross Trigger", message = "L Setup後、1分足終値がEMAを上抜けました")
+alertcondition(useEmaTriggerAlerts and shortEmaTrigger, title = "Short EMA Cross Trigger", message = "S Setup後、1分足終値がEMAを下抜けました")
