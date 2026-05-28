@@ -42,3 +42,9 @@ S：
 
 なのでG案は、実質的には、
 B5.2 Strategy + EMA Filter
+
+##インジケータ
+
+挙動OK
+
+v8.1α-G-EMA Filter Trigger Indicator
