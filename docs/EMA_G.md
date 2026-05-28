@@ -4,7 +4,9 @@
 ##
 - G考え方
 MTAゾーン接触
+
 ↓
+
 Setup状態
 ↓
 別Trigger成立
