@@ -48,3 +48,7 @@ B5.2 Strategy + EMA Filter
 挙動OK
 
 v8.1α-G-EMA Filter Trigger Indicator
+
+##G案のストラテジー化
+
+Gインジケーターのロジックをそのまま使い、決済・数量設定は B5.2 / D-S1.1 と同じ形式
