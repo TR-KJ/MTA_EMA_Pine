@@ -3,16 +3,23 @@
 
 ##
 - G考え方
+
 MTAゾーン接触
 
 ↓
 
 Setup状態
+
 ↓
+
 別Trigger成立
+
 ↓
+
 その時点で close が EMA の有利側にいるか確認
+
 ↓
+
 OKならEntry
 
 Lなら close > EMA のときだけ許可
