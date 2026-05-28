@@ -52,3 +52,12 @@ v8.1α-G-EMA Filter Trigger Indicator
 ##G案のストラテジー化
 
 Gインジケーターのロジックをそのまま使い、決済・数量設定は B5.2 / D-S1.1 と同じ形式
+
+##EMAをフィルタとして使用
+
+v8.1α-G-S1.1-EMA Filter Strategy SL Mode Testのコードで、
+
+MTA Zone        ：従来通り。L=HTF Bullゾーン下限、S=HTF Bearゾーン上限
+Trigger Bar     ：Trigger成立足の安値/高値
+Setup Touch Bar ：Setup接触足の安値/高値
+MTA Zone Mid    ：MTAゾーン中央
